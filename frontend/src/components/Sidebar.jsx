@@ -28,12 +28,12 @@ function Sidebar({ isOpen, closeSidebar, currentSessionId, setCurrentSessionId }
                 New Chat
             </button>
 
-            <div style={{ padding: '1rem', borderTop: '1px solid #334155', marginTop: 'auto' }}>
+            {/* <div style={{ padding: '1rem', borderTop: '1px solid #334155', marginTop: 'auto' }}>
                 <a href="/db" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#94a3b8', textDecoration: 'none', fontSize: '0.9rem' }}>
                     <Database size={16} />
                     View Database
                 </a>
-            </div>
+            </div> */}
         </div>
     );
 }
