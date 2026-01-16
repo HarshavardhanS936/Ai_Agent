@@ -170,19 +170,7 @@ function ChatArea({ currentSessionId }) {
 
                 <div ref={bottomRef} />
 
-                {/* Toast */}
-                {modelUsed && (
-                    <div style={{
-                        position: 'fixed', top: 20, right: 20,
-                        background: 'rgba(30, 41, 59, 0.9)', color: 'white',
-                        padding: '8px 16px', borderRadius: 20,
-                        fontSize: '0.85rem', backdropFilter: 'blur(4px)',
-                        animation: 'fadeIn 0.3s',
-                        zIndex: 1000
-                    }}>
-                        Using: {modelUsed}
-                    </div>
-                )}
+
             </div>
 
             {/* Input Area - Fixed at bottom */}
