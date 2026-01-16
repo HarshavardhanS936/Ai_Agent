@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { MessageSquarePlus, Trash2, Database, MessageSquare } from 'lucide-react';
-import axios from 'axios';
+import api from '../api/axios';
 
 function Sidebar({ isOpen, closeSidebar, currentSessionId, setCurrentSessionId }) {
     const [sessions, setSessions] = useState([]);
 
     const fetchSessions = async () => {
         try {
-            const res = await axios.get('/api/sessions');
+            const res = await api.get('/api/sessions');
             setSessions(res.data);
         } catch (err) {
             console.error("Failed to load sessions", err);
@@ -28,7 +28,7 @@ function Sidebar({ isOpen, closeSidebar, currentSessionId, setCurrentSessionId }
         if (!confirm('Delete this chat?')) return;
 
         try {
-            await axios.post('/clear_history', { sessionId: id });
+            await api.post('/clear_history', { sessionId: id });
             if (id === currentSessionId) {
                 handleNewChat();
             } else {

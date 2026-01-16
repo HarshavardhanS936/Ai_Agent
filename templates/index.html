@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini AI Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --chat-bg: #ffffff;
+            --user-msg-bg: #eff6ff;
+            --bot-msg-bg: #f1f5f9;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            color: var(--text-color);
+        }
+
+        header {
+            background-color: var(--chat-bg);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .message {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            max-width: 85%;
+        }
+
+        .message.user {
+            margin-left: auto;
+            flex-direction: rr-reverse;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+
+        .user .avatar {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .bot .avatar {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .message-content {
+            background-color: var(--bot-msg-bg);
+            padding: 1rem 1.5rem;
+            border-radius: 1rem;
+            font-size: 1rem;
+            line-height: 1.6;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .user .message-content {
+            background-color: var(--user-msg-bg);
+            color: var(--text-color);
+            border-bottom-right-radius: 0.25rem;
+        }
+
+        .bot .message-content {
+            background-color: var(--chat-bg);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        /* Markdown Styles */
+        .message-content pre {
+            background-color: #1e293b;
+            color: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+
+        .message-content code {
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-content p {
+            margin: 0 0 0.8rem 0;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .input-area {
+            background-color: var(--chat-bg);
+            padding: 1.5rem 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .input-form {
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            gap: 1rem;
+            position: relative;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        button.send-btn {
+            padding: 0 1.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button.send-btn:hover {
+            background-color: #1d4ed8;
+        }
+
+        button.send-btn:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .input-group {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            position: relative;
+            background: #f8fafc;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .input-group input[type="text"] {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 10px;
+            outline: none;
+            font-size: 1rem;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            color: #64748b;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-btn:hover {
+            color: var(--primary-color);
+        }
+
+        .send-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+
+        .send-btn:hover {
+            color: white;
+            background-color: #1d4ed8;
+        }
+
+        /* Upload Preview */
+        #imagePreviewContainer {
+            margin-bottom: 10px;
+            position: relative;
+            display: inline-block;
+        }
+
+        #imagePreview {
+            max-height: 100px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        .chat-image {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        /* Model Toast */
+        .model-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(30, 41, 59, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            backdrop-filter: blur(4px);
+            z-index: 2000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                height: 100%;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .mobile-header {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>Gemini AI</h3>
+            <button class="action-btn" onclick="toggleSidebar()" style="color: white; display: none;"
+                id="closeSidebarBtn">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <button class="new-chat-btn" onclick="startNewChat()">
+            <i class="fas fa-plus"></i> New Chat
+        </button>
+
+        <div class="history-list" id="historyList">
+            <!-- Sessions will be loaded here -->
+        </div>
+
+        <div class="sidebar-footer">
+            <a href="/db" class="db-link">
+                <i class="fas fa-database"></i> Database View
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Mobile Header -->
+        <div class="mobile-header">
+            <button class="action-btn" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h3>Gemini AI</h3>
+            <div style="width: 32px;"></div> <!-- Spacer -->
+        </div>
+
+        <div id="chatContainer" class="chat-container">
+            <div class="welcome-screen" id="welcomeScreen">
+                <i class="fas fa-robot" style="font-size: 3rem; margin-bottom: 20px; color: #cbd5e1;"></i>
+                <h2>How can I help you today?</h2>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div id="imagePreviewContainer" style="display: none;">
+                <div style="position: absolute; top: -8px; right: -8px; background: red; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; cursor: pointer; font-size: 12px; line-height: 20px;"
+                    onclick="removeImage()">×</div>
+                <img id="imagePreview" src="">
+            </div>
+
+            <form class="input-group" onsubmit="sendMessage(event)">
+                <input type="file" id="fileInput" accept="image/*" style="display: none;"
+                    onchange="handleFileSelect(event)">
+
+                <button type="button" class="action-btn" onclick="document.getElementById('fileInput').click()"
+                    title="Upload Image">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+
+                <input type="text" id="userInput" placeholder="Message Gemini..." autocomplete="off">
+
+                <button type="submit" class="action-btn send-btn" id="sendBtn">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+            <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: 10px;">
+                Gemini can make mistakes. Consider checking important information.
+            </div>
+        </div>
+    </div>
+
+    <div id="modelToast" class="model-toast">
+        Using: <span id="modelName"></span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        let currentSessionId = Date.now().toString();
+        let currentFile = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSessions();
+            checkMobile();
+        });
+
+        window.addEventListener('resize', checkMobile);
+
+        function checkMobile() {
+            const isMobile = window.innerWidth <= 768;
+            document.getElementById('closeSidebarBtn').style.display = isMobile ? 'block' : 'none';
+            if (!isMobile) document.getElementById('sidebar').classList.remove('open');
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/sessions');
+                const sessions = await response.json();
+                const container = document.getElementById('historyList');
+                container.innerHTML = '';
+
+                sessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = `history-item ${session.id === currentSessionId ? 'active' : ''}`;
+                    item.innerHTML = `
+                        <div class="title" onclick="loadSession('${session.id}')">
+                            <i class="far fa-comment-alt" style="margin-right: 8px;"></i>
+                            ${session.preview}
+                        </div>
+                        <i class="fas fa-trash delete-icon" onclick="deleteSession('${session.id}', event)"></i>
+                    `;
+                    container.appendChild(item);
+                });
+            } catch (e) {
+                console.error("Failed to load sessions", e);
+            }
+        }
+
+        async function loadSession(id) {
+            currentSessionId = id;
+            document.getElementById('welcomeScreen').style.display = 'none';
+            document.getElementById('chatContainer').innerHTML = ''; // Clear current view
+
+            // Highlight active in sidebar
+            loadSessions(); // Re-render to update active class
+
+            if (window.innerWidth <= 768) toggleSidebar(); // Close sidebar on mobile
+
+            const response = await fetch(`/api/history/${id}`);
+            const messages = await response.json();
+
+            messages.forEach(msg => {
+                appendMessage(msg.content, msg.role === 'model' ? 'bot' : 'user', true, msg.image_url);
+            });
+        }
+
+        function startNewChat() {
+            currentSessionId = Date.now().toString();
+            document.getElementById('chatContainer').innerHTML = `
+                <div class="welcome-screen" id="welcomeScreen">
+                    <i class="fas fa-robot" style="font-size: 3rem; margin-bottom: 20px; color: #cbd5e1;"></i>
+                    <h2>How can I help you today?</h2>
+                </div>
+            `;
+            loadSessions();
+            if (window.innerWidth <= 768) toggleSidebar();
+        }
+
+        async function deleteSession(id, event) {
+            event.stopPropagation(); // Prevent loading the session
+            if (!confirm('Delete this chat?')) return;
+
+            await fetch('/clear_history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: id })
+            });
+
+            if (id === currentSessionId) startNewChat();
+            else loadSessions();
+        }
+
+        // --- Chat & Upload Logic ---
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                currentFile = file;
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removeImage() {
+            currentFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+        }
+
+        async function sendMessage(event) {
+            event.preventDefault();
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+
+            if (!message && !currentFile) return;
+
+            document.getElementById('welcomeScreen').style.display = 'none';
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('sessionId', currentSessionId);
+            if (currentFile) formData.append('image', currentFile);
+
+            // Optimistic Update
+            appendMessage(message, 'user', false, currentFile ? document.getElementById('imagePreview').src : null);
+
+            input.value = '';
+            removeImage();
+
+            // Loading state could go here
+
+            try {
+                const response = await fetch('/chat', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (data.error) {
+                    appendMessage(`Error: ${data.error}`, 'bot');
+                } else {
+                    appendMessage(data.html_response, 'bot', true);
+                    if (data.model_used) showToast(data.model_used);
+                    loadSessions(); // Refresh sidebar list (for new chat preview)
+                }
+            } catch (e) {
+                appendMessage("Network error. Please try again.", 'bot');
+            }
+        }
+
+        function appendMessage(text, sender, isHtml = false, imageUrl = null) {
+            const container = document.getElementById('chatContainer');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${sender}`;
+
+            let contentHtml = '';
+            if (imageUrl) {
+                contentHtml += `<img src="${imageUrl}" class="chat-image">`;
+            }
+
+            contentHtml += `<div class="message-content">`;
+            if (isHtml) contentHtml += text;
+            else contentHtml += text.replace(/\n/g, '<br>'); // Simple fallback
+            contentHtml += `</div>`;
+
+            msgDiv.innerHTML = contentHtml;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function showToast(model) {
+            const toast = document.getElementById('modelToast');
+            document.getElementById('modelName').textContent = model;
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+    </script>
+</body>
+
+</html>

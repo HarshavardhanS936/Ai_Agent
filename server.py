@@ -1,0 +1,315 @@
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
+import google.generativeai as genai
+import os
+import markdown
+from dotenv import load_dotenv
+import sqlite3
+import datetime
+import time
+import logging
+from werkzeug.utils import secure_filename
+from google.api_core import exceptions
+import PIL.Image
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    filename='application.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Configure Gemini
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    print("Warning: GEMINI_API_KEY not found in environment variables")
+else:
+    genai.configure(api_key=api_key)
+
+SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. 
+Your goal is to assist users with any questions or tasks they may have, across a wide range of topics.
+Be polite, concise, and helpful."""
+
+AVAILABLE_MODELS = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
+]
+
+from flask_cors import CORS
+
+app = Flask(__name__, 
+            static_folder='frontend/dist/assets',
+            template_folder='frontend/dist')
+
+# Configure headers for CORS
+CORS(app)
+
+DB_NAME = "chat.db"
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id TEXT NOT NULL,
+                  role TEXT NOT NULL,
+                  content TEXT NOT NULL,
+                  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    
+    # Check for image_path column
+    c.execute("PRAGMA table_info(messages)")
+    columns = [column[1] for column in c.fetchall()]
+    if 'image_path' not in columns:
+        c.execute("ALTER TABLE messages ADD COLUMN image_path TEXT")
+        
+    conn.commit()
+    conn.close()
+
+# Initialize DB on startup
+init_db()
+
+@app.route('/')
+def home():
+    return send_from_directory('frontend/dist', 'index.html')
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+def get_chat_history(session_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT role, content, image_path FROM messages WHERE session_id = ? ORDER BY id ASC", (session_id,))
+    rows = c.fetchall()
+    conn.close()
+    
+    history = []
+    # Always start with system prompt
+    history.append({"role": "user", "parts": [SYSTEM_PROMPT]})
+    history.append({"role": "model", "parts": ["I understand. I am ready to help you with whatever you need."]})
+    
+    for role, content, image_path in rows:
+        # Map simple role to Gemini API format
+        api_role = "model" if role == "assistant" else "user"
+        
+        parts = [content]
+        # We generally don't load the actual image bytes into history for the API to save bandwidth/complexity
+        # unless it's the very latest turn. The API is stateless but we helper lib manages history.
+        # Ideally, we should provide the image if it was part of the conversation.
+        # For this implementation, we will try to rely on the model helper or 
+        # just append the text. Providing previous images in history can be heavy.
+        # A simple strategy: Only the CURRENT request sends the image.
+        # Limitation: The model won't "see" past images in context unless we reload them.
+        # Let's try to reload them if file exists.
+        
+        if image_path and os.path.exists(image_path) and api_role == 'user':
+             try:
+                 img = PIL.Image.open(image_path)
+                 parts.append(img)
+             except Exception as e:
+                 print(f"Could not load image for history: {e}")
+
+        history.append({"role": api_role, "parts": parts})
+        
+    return history
+
+def generate_with_fallback(session_id, user_message, history, image_file=None):
+    last_error = None
+    
+    # Try each model in sequence
+    for model_name in AVAILABLE_MODELS:
+        try:
+            print(f"Trying model: {model_name}...")
+            # Configure the specific model
+            model = genai.GenerativeModel(model_name)
+            
+            # Prepare the current prompt parts
+            current_parts = [user_message]
+            if image_file:
+                current_parts.append(image_file)
+
+            # Start chat with context (history)
+            # Note: start_chat history shouldn't include the current new message
+            chat = model.start_chat(history=history)
+            
+            # Send the message (text + image if present)
+            response = chat.send_message(current_parts)
+            
+            return {
+                'text': response.text,
+                'model_used': model_name,
+                'status': 'success'
+            }
+            
+        except exceptions.ResourceExhausted as e:
+            print(f"Model {model_name} quota exceeded. Switching...")
+            last_error = e
+            continue  # Try next model
+        except Exception as e:
+            print(f"Error with {model_name}: {str(e)}")
+            last_error = e
+            if "vision" in str(e).lower() or "image" in str(e).lower():
+                 # Should probably skip models that don't support vision if we have an image
+                 # But our list is mostly flash/pro which support it.
+                 pass
+            continue
+
+    # If we get here, all models failed
+    raise last_error or Exception("All models failed")
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    # Handle multipart/form-data
+    user_message = request.form.get('message')
+    session_id = request.form.get('sessionId', 'default')
+    
+    if not user_message:
+        return jsonify({'error': 'No message provided'}), 400
+
+    image_path = None
+    pil_image = None
+
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(f"{int(time.time())}_{file.filename}")
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(image_path)
+            # Load for processing
+            pil_image = PIL.Image.open(image_path)
+
+    # Save user message to DB
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("INSERT INTO messages (session_id, role, content, image_path) VALUES (?, ?, ?, ?)", 
+              (session_id, "user", user_message, image_path))
+    conn.commit()
+    conn.close()
+
+    try:
+        # Get history for context
+        full_history = get_chat_history(session_id)
+        
+        # Exclude the message we just inserted (the very last one) from history
+        context_history = full_history[:-1]
+        
+        # Use fallback generation
+        result = generate_with_fallback(session_id, user_message, context_history, image_file=pil_image)
+        
+        bot_response = result['text']
+        model_used = result['model_used']
+        
+        # Save bot response to DB
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
+                  (session_id, "assistant", bot_response))
+        conn.commit()
+        conn.close()
+        
+        # Convert markdown to HTML for frontend
+        html_response = markdown.markdown(bot_response)
+        
+        return jsonify({
+            'response': bot_response,
+            'html_response': html_response,
+            'model_used': model_used,
+            'user_image_url': f"/uploads/{os.path.basename(image_path)}" if image_path else None
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sessions')
+def get_sessions():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    # Get distinct sessions with their first message timestamp and content preview
+    query = """
+        SELECT session_id, MIN(timestamp) as start_time,
+        (SELECT content FROM messages m2 WHERE m2.session_id = m1.session_id ORDER BY id ASC LIMIT 1) as preview
+        FROM messages m1
+        GROUP BY session_id
+        ORDER BY start_time DESC
+    """
+    c.execute(query)
+    rows = c.fetchall()
+    conn.close()
+    
+    sessions = []
+    for r in rows:
+        sessions.append({
+            'id': r[0],
+            'timestamp': r[1],
+            'preview': r[2][:30] + '...' if r[2] else 'New Chat'
+        })
+    return jsonify(sessions)
+
+@app.route('/api/history/<session_id>')
+def get_session_history(session_id):
+    history = get_chat_history(session_id)
+    # The get_chat_history function adds system prompt, we might want just the visible messages for the UI
+    # But sticking to what the UI expects for now.
+    # Actually, the front-end will likely want to render the formatted HTML.
+    # Let's return the raw db rows so frontend can render them
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT role, content, image_path FROM messages WHERE session_id = ? ORDER BY id ASC", (session_id,))
+    rows = c.fetchall()
+    conn.close()
+    
+    messages = []
+    for row in rows:
+        messages.append({
+            'role': row['role'],
+            'content': markdown.markdown(row['content']), # Send HTML ready content
+            'image_url': f"/uploads/{os.path.basename(row['image_path'])}" if row['image_path'] else None
+        })
+    return jsonify(messages)
+
+@app.route('/clear_history', methods=['POST'])
+def clear_history():
+    data = request.json
+    session_id = data.get('sessionId')
+    
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    if session_id:
+        c.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+    else:
+        # Default behavior if no ID (though specific ID is safer)
+        pass 
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'status': 'cleared'})
+
+@app.route('/db')
+def view_database():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT * FROM messages ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    return render_template('database.html', messages=rows)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

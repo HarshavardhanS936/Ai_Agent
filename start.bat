@@ -1,0 +1,3 @@
+@echo off
+echo Starting Gemini AI Agent...
+python wsgi.py

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Image as ImageIcon, X, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import api from '../api/axios';
 import { marked } from 'marked';
 
 import botAvatar from '../assets/bot.svg'; // We might need to handle assets, but for now use text/emoji or inline SVG if missing
@@ -47,7 +47,7 @@ function ChatArea({ currentSessionId }) {
             // First, check if clear history was just called (new chat)
             // If it's a new generated ID, it won't have history in DB
             // But the API handles empty returns fine.
-            const res = await axios.get(`/api/history/${currentSessionId}`);
+            const res = await api.get(`/api/history/${currentSessionId}`);
             // History messages should NOT animate
             const historyMsgs = res.data.map(msg => ({
                 ...msg,
@@ -97,7 +97,7 @@ function ChatArea({ currentSessionId }) {
         setInputObj({ text: '', file: null, preview: null });
 
         try {
-            const res = await axios.post('/chat', formData);
+            const res = await api.post('/chat', formData);
 
             const botMsg = {
                 role: 'model',

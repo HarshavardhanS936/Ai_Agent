@@ -1,0 +1,21 @@
+# Security (CRITICAL)
+.env
+
+# Database & Storage
+chat.db
+uploads/
+
+# Python / Environment
+__pycache__/
+*.pyc
+venv/
+env/
+.pytest_cache/
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
