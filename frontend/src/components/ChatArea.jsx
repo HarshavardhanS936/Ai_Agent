@@ -205,7 +205,7 @@ function ChatArea({ currentSessionId }) {
                             value={inputObj.text}
                             onChange={e => setInputObj(prev => ({ ...prev, text: e.target.value }))}
                             onKeyDown={handleKeyDown}
-                            placeholder="Message Gemini..."
+                            placeholder="Message Harsha..."
                             rows={1}
                         />
 
