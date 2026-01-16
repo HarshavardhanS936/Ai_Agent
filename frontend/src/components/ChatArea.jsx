@@ -231,7 +231,7 @@ function ChatArea({ currentSessionId }) {
                     </div>
                 </div>
                 <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#64748b', marginTop: 10 }}>
-                    Gemini can make mistakes. Consider checking important information.
+                    Harsha's AI can make mistakes. Consider checking important information.
                 </div>
             </div>
         </div>
