@@ -69,10 +69,45 @@ function ChatArea({ currentSessionId }) {
         }
     }, []);
 
+    // Stop speech when component unmounts or sessionId changes
+    useEffect(() => {
+        return () => {
+            window.speechSynthesis.cancel();
+            if (recognitionRef.current) recognitionRef.current.stop();
+        };
+    }, [currentSessionId]);
+
+    // Cleanup speech if disabled manually
+    useEffect(() => {
+        if (!speechEnabled) {
+            window.speechSynthesis.cancel();
+        }
+    }, [speechEnabled]);
+
+    const cleanTextForSpeech = (text) => {
+        if (!text) return '';
+
+        return text
+            // 1. Remove large code blocks first
+            .replace(/```[\s\S]*?```/g, ' ')
+            // 2. Remove URLs/Links but keep the text
+            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+            // 3. Remove all markdown symbols (*, _, #, ~, `, >)
+            .replace(/[\*_#~`>]/g, ' ')
+            // 4. Remove list markers (bullet points, numberings at start of lines)
+            .replace(/^\s*[\-\*\d\.]+\s+/gm, ' ')
+            // 5. Replace multiple spaces/newlines with a single space for smooth speech
+            .replace(/\s+/g, ' ')
+            // 6. Final trim
+            .trim();
+    };
+
     const speak = (text) => {
         if (!speechEnabled) return;
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
+
+        const cleanedText = cleanTextForSpeech(text);
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
         window.speechSynthesis.speak(utterance);
     };
 
@@ -80,6 +115,8 @@ function ChatArea({ currentSessionId }) {
         if (isListening) {
             recognitionRef.current?.stop();
         } else {
+            // Cancel current speech before listening to avoid the AI "hearing" itself
+            window.speechSynthesis.cancel();
             recognitionRef.current?.start();
             setIsListening(true);
         }
