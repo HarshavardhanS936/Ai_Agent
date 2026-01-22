@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { Send, Image as ImageIcon, X, Loader2, Mic, MicOff, Volume2, VolumeX, FileText } from 'lucide-react';
 import api from '../api/axios';
 import { marked } from 'marked';
 
-import botAvatar from '../assets/bot.svg'; // We might need to handle assets, but for now use text/emoji or inline SVG if missing
+import botAvatar from '../assets/bot.svg';
 
 const TypewriterMsg = ({ text, onComplete }) => {
     const [displayLength, setDisplayLength] = useState(0);
@@ -16,7 +16,7 @@ const TypewriterMsg = ({ text, onComplete }) => {
                 onComplete && onComplete();
                 return prev;
             });
-        }, 15); // Adjust speed here (lower = faster)
+        }, 15);
         return () => clearInterval(timer);
     }, [text]);
 
@@ -26,29 +26,68 @@ const TypewriterMsg = ({ text, onComplete }) => {
 
 function ChatArea({ currentSessionId }) {
     const [messages, setMessages] = useState([]);
-    const [inputObj, setInputObj] = useState({ text: '', file: null, preview: null });
+    const [inputObj, setInputObj] = useState({ text: '', file: null, preview: null, fileType: null });
     const [loading, setLoading] = useState(false);
     const [modelUsed, setModelUsed] = useState(null);
+    const [isListening, setIsListening] = useState(false);
+    const [speechEnabled, setSpeechEnabled] = useState(false);
 
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
+    const recognitionRef = useRef(null);
 
     useEffect(() => {
         loadHistory();
     }, [currentSessionId]);
 
     useEffect(() => {
-        // Auto-scroll logic could be improved to stick to bottom
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, loading, modelUsed]); // Trigger on modelUsed too as it appears late
+    }, [messages, loading, modelUsed]);
+
+    // Initialize Speech Recognition
+    useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = false;
+
+            recognitionRef.current.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                setInputObj(prev => ({ ...prev, text: prev.text + ' ' + transcript }));
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                setIsListening(false);
+            };
+
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+            };
+        }
+    }, []);
+
+    const speak = (text) => {
+        if (!speechEnabled) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+        } else {
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    };
 
     const loadHistory = async () => {
         try {
-            // First, check if clear history was just called (new chat)
-            // If it's a new generated ID, it won't have history in DB
-            // But the API handles empty returns fine.
             const res = await api.get(`/api/history/${currentSessionId}`);
-            // History messages should NOT animate
             const historyMsgs = res.data.map(msg => ({
                 ...msg,
                 animate: false
@@ -62,16 +101,21 @@ function ChatArea({ currentSessionId }) {
     const handleFile = (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                setInputObj(prev => ({ ...prev, file, preview: ev.target.result }));
-            };
-            reader.readAsDataURL(file);
+            const fileType = file.type;
+            if (fileType.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    setInputObj(prev => ({ ...prev, file, preview: ev.target.result, fileType: 'image' }));
+                };
+                reader.readAsDataURL(file);
+            } else if (fileType === 'application/pdf') {
+                setInputObj(prev => ({ ...prev, file, preview: null, fileType: 'pdf' }));
+            }
         }
     };
 
     const clearFile = () => {
-        setInputObj(prev => ({ ...prev, file: null, preview: null }));
+        setInputObj(prev => ({ ...prev, file: null, preview: null, fileType: null }));
     };
 
     const handleSend = async () => {
@@ -79,8 +123,9 @@ function ChatArea({ currentSessionId }) {
 
         const userMsg = {
             role: 'user',
-            content: inputObj.text, // User msg is plain text usually, but handle consistency
-            image_url: inputObj.preview, // For optimistic UI
+            content: inputObj.text,
+            image_url: inputObj.fileType === 'image' ? inputObj.preview : null,
+            file_name: inputObj.fileType === 'pdf' ? inputObj.file.name : null,
             animate: false
         };
 
@@ -93,21 +138,22 @@ function ChatArea({ currentSessionId }) {
         formData.append('sessionId', currentSessionId);
         if (inputObj.file) formData.append('image', inputObj.file);
 
-        // Clear input
-        setInputObj({ text: '', file: null, preview: null });
+        setInputObj({ text: '', file: null, preview: null, fileType: null });
 
         try {
             const res = await api.post('/chat', formData);
 
             const botMsg = {
                 role: 'model',
-                content: res.data.response, // Use RAW text for typewriter
-                html_content: res.data.html_response, // Backup full HTML
-                animate: true // Enable animation for this new message
+                content: res.data.response,
+                html_content: res.data.html_response,
+                animate: true
             };
 
             setMessages(prev => [...prev, botMsg]);
             if (res.data.model_used) setModelUsed(res.data.model_used);
+
+            if (speechEnabled) speak(res.data.response);
 
         } catch (err) {
             setMessages(prev => [...prev, { role: 'model', content: "Sorry, something went wrong.", animate: false }]);
@@ -142,17 +188,30 @@ function ChatArea({ currentSessionId }) {
                             {msg.image_url && (
                                 <img src={msg.image_url} alt="User upload" className="message-image" />
                             )}
+                            {msg.file_name && (
+                                <div className="file-preview-mini">
+                                    <FileText size={16} />
+                                    <span>{msg.file_name}</span>
+                                </div>
+                            )}
 
                             {msg.role === 'model' && msg.animate ? (
                                 <TypewriterMsg
                                     text={msg.content}
-                                    onComplete={() => {
-                                        // Optional: Could update state to set animate: false to "finalize" it
-                                        // But strictly not necessary unless resizing window re-triggers it (it won't with key=i)
-                                    }}
+                                    onComplete={() => { }}
                                 />
                             ) : (
                                 <div dangerouslySetInnerHTML={{ __html: msg.html_content || marked.parse(msg.content || '') }} />
+                            )}
+
+                            {msg.role === 'model' && (
+                                <button
+                                    className="msg-speak-btn"
+                                    onClick={() => speak(msg.content)}
+                                    title="Speak response"
+                                >
+                                    <Volume2 size={14} />
+                                </button>
                             )}
                         </div>
                     </div>
@@ -169,16 +228,20 @@ function ChatArea({ currentSessionId }) {
                 )}
 
                 <div ref={bottomRef} />
-
-
             </div>
 
-            {/* Input Area - Fixed at bottom */}
             <div className="input-container">
                 <div className="input-box">
-                    {inputObj.preview && (
-                        <div style={{ position: 'relative', width: 'fit-content' }}>
-                            <img src={inputObj.preview} style={{ maxHeight: 80, borderRadius: 6, border: '1px solid #334155' }} />
+                    {(inputObj.preview || inputObj.fileType === 'pdf') && (
+                        <div style={{ position: 'relative', width: 'fit-content', marginBottom: 10 }}>
+                            {inputObj.fileType === 'image' ? (
+                                <img src={inputObj.preview} style={{ maxHeight: 80, borderRadius: 6, border: '1px solid #334155' }} />
+                            ) : (
+                                <div className="file-preview-card">
+                                    <FileText size={24} />
+                                    <span>{inputObj.file?.name}</span>
+                                </div>
+                            )}
                             <button
                                 onClick={clearFile}
                                 style={{
@@ -195,19 +258,35 @@ function ChatArea({ currentSessionId }) {
                     )}
 
                     <div className="input-row">
-                        <label className="icon-btn" style={{ cursor: 'pointer' }}>
-                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
-                            <ImageIcon size={20} className={inputObj.file ? "text-blue-500" : ""} />
+                        <label className="icon-btn" title="Attach image or PDF">
+                            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
+                            <ImageIcon size={20} className={inputObj.file ? "active-icon" : ""} />
                         </label>
+
+                        <button
+                            className={`icon-btn ${isListening ? 'listening' : ''}`}
+                            onClick={toggleListening}
+                            title={isListening ? "Listening..." : "Voice typing"}
+                        >
+                            {isListening ? <Mic size={20} color="#ef4444" /> : <Mic size={20} />}
+                        </button>
 
                         <textarea
                             ref={inputRef}
                             value={inputObj.text}
                             onChange={e => setInputObj(prev => ({ ...prev, text: e.target.value }))}
                             onKeyDown={handleKeyDown}
-                            placeholder="Message Harsha..."
+                            placeholder={isListening ? "Listening..." : "Message Harsha..."}
                             rows={1}
                         />
+
+                        <button
+                            className={`icon-btn ${speechEnabled ? 'active-icon' : ''}`}
+                            onClick={() => setSpeechEnabled(!speechEnabled)}
+                            title={speechEnabled ? "Mute auto-speak" : "Enable auto-speak"}
+                        >
+                            {speechEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                        </button>
 
                         <button
                             className="icon-btn send-btn"
@@ -217,9 +296,6 @@ function ChatArea({ currentSessionId }) {
                             <Send size={18} />
                         </button>
                     </div>
-                </div>
-                <div style={{ textAlign: 'center', fontSize: '0.75rem', color: '#64748b', marginTop: 10 }}>
-                    Harsha's AI can make mistakes. Consider checking important information.
                 </div>
             </div>
         </div>

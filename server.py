@@ -51,7 +51,7 @@ CORS(app)
 
 DB_NAME = "chat.db"
 UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -119,35 +119,49 @@ def get_chat_history(session_id):
         
         if image_path and os.path.exists(image_path) and api_role == 'user':
              try:
-                 img = PIL.Image.open(image_path)
-                 parts.append(img)
+                 # Only open as image if it's actually an image
+                 if any(image_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                     img = PIL.Image.open(image_path)
+                     parts.append(img)
+                 elif image_path.lower().endswith('.pdf'):
+                     # For now, we don't reload PDFs into history manually to avoid re-uploading
+                     # But we could message the model that a file was here.
+                     parts.append(f"[File attached: {os.path.basename(image_path)}]")
              except Exception as e:
-                 print(f"Could not load image for history: {e}")
+                 print(f"Could not load file for history: {e}")
 
         history.append({"role": api_role, "parts": parts})
         
     return history
 
-def generate_with_fallback(session_id, user_message, history, image_file=None):
+def generate_with_fallback(session_id, user_message, history, file_path=None):
     last_error = None
     
     # Try each model in sequence
     for model_name in AVAILABLE_MODELS:
         try:
             print(f"Trying model: {model_name}...")
-            # Configure the specific model
             model = genai.GenerativeModel(model_name)
             
-            # Prepare the current prompt parts
+            # Prepare parts
             current_parts = [user_message]
-            if image_file:
-                current_parts.append(image_file)
-
-            # Start chat with context (history)
-            # Note: start_chat history shouldn't include the current new message
-            chat = model.start_chat(history=history)
             
-            # Send the message (text + image if present)
+            if file_path:
+                # Use Gemini File API for PDFs and robust image handling
+                print(f"Uploading file to Gemini: {file_path}")
+                gemini_file = genai.upload_file(path=file_path)
+                
+                # Wait for processing if it's a document/video
+                if file_path.lower().endswith('.pdf'):
+                    while gemini_file.state.name == "PROCESSING":
+                        print("Waiting for file processing...")
+                        time.sleep(2)
+                        gemini_file = genai.get_file(gemini_file.name)
+                
+                current_parts.append(gemini_file)
+
+            # Start chat with context
+            chat = model.start_chat(history=history)
             response = chat.send_message(current_parts)
             
             return {
@@ -157,19 +171,14 @@ def generate_with_fallback(session_id, user_message, history, image_file=None):
             }
             
         except exceptions.ResourceExhausted as e:
-            print(f"Model {model_name} quota exceeded. Switching...")
+            print(f"Model {model_name} quota exceeded...")
             last_error = e
-            continue  # Try next model
+            continue
         except Exception as e:
             print(f"Error with {model_name}: {str(e)}")
             last_error = e
-            if "vision" in str(e).lower() or "image" in str(e).lower():
-                 # Should probably skip models that don't support vision if we have an image
-                 # But our list is mostly flash/pro which support it.
-                 pass
             continue
 
-    # If we get here, all models failed
     raise last_error or Exception("All models failed")
 
 @app.route('/chat', methods=['POST'])
@@ -181,23 +190,20 @@ def chat():
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
 
-    image_path = None
-    pil_image = None
+    file_path = None
 
     if 'image' in request.files:
         file = request.files['image']
         if file and file.filename != '' and allowed_file(file.filename):
             filename = secure_filename(f"{int(time.time())}_{file.filename}")
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(image_path)
-            # Load for processing
-            pil_image = PIL.Image.open(image_path)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
 
     # Save user message to DB
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("INSERT INTO messages (session_id, role, content, image_path) VALUES (?, ?, ?, ?)", 
-              (session_id, "user", user_message, image_path))
+              (session_id, "user", user_message, file_path))
     conn.commit()
     conn.close()
 
@@ -209,7 +215,7 @@ def chat():
         context_history = full_history[:-1]
         
         # Use fallback generation
-        result = generate_with_fallback(session_id, user_message, context_history, image_file=pil_image)
+        result = generate_with_fallback(session_id, user_message, context_history, file_path=file_path)
         
         bot_response = result['text']
         model_used = result['model_used']
