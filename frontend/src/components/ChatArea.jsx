@@ -32,6 +32,8 @@ function ChatArea({ currentSessionId }) {
     const [isListening, setIsListening] = useState(false);
     const [speechEnabled, setSpeechEnabled] = useState(false);
 
+    const [isDragging, setIsDragging] = useState(false);
+
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
     const recognitionRef = useRef(null);
@@ -43,6 +45,44 @@ function ChatArea({ currentSessionId }) {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading, modelUsed]);
+
+    // Handle Drag and Drop
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            processFile(files[0]);
+        }
+    };
+
+    const processFile = (file) => {
+        if (!file) return;
+        const fileType = file.type;
+        if (fileType.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setInputObj(prev => ({ ...prev, file, preview: ev.target.result, fileType: 'image' }));
+            };
+            reader.readAsDataURL(file);
+        } else if (fileType === 'application/pdf') {
+            setInputObj(prev => ({ ...prev, file, preview: null, fileType: 'pdf' }));
+        }
+    };
 
     // Initialize Speech Recognition
     useEffect(() => {
@@ -150,18 +190,7 @@ function ChatArea({ currentSessionId }) {
 
     const handleFile = (e) => {
         const file = e.target.files[0];
-        if (file) {
-            const fileType = file.type;
-            if (fileType.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    setInputObj(prev => ({ ...prev, file, preview: ev.target.result, fileType: 'image' }));
-                };
-                reader.readAsDataURL(file);
-            } else if (fileType === 'application/pdf') {
-                setInputObj(prev => ({ ...prev, file, preview: null, fileType: 'pdf' }));
-            }
-        }
+        processFile(file);
     };
 
     const clearFile = () => {
@@ -221,7 +250,21 @@ function ChatArea({ currentSessionId }) {
     };
 
     return (
-        <div className="chat-interface">
+        <div
+            className={`chat-interface ${isDragging ? 'dragging' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            {isDragging && (
+                <div className="drag-overlay">
+                    <div className="drag-overlay-content">
+                        <ImageIcon size={48} color="var(--accent-color)" />
+                        <p>Drop your images or PDFs here</p>
+                    </div>
+                </div>
+            )}
+
             <div className="chat-messages">
                 {messages.length === 0 && (
                     <div className="welcome-screen">

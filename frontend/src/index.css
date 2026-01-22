@@ -296,33 +296,34 @@ body {
 .input-container {
   padding: 1.5rem;
   background: linear-gradient(to top, var(--bg-color) 80%, rgba(15, 17, 23, 0));
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 .input-box {
-  max-width: 780px;
+  max-width: 900px;
   margin: 0 auto;
   background-color: var(--sidebar-bg);
-  /* Use solid color for input bg */
   border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  padding: 0.6rem;
-  /* Compact padding */
+  border-radius: 1rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  transition: border-color 0.2s;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
 }
 
 .input-box:focus-within {
-  border-color: #58a6ff;
-  /* Focus highlight */
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(35, 134, 54, 0.2);
 }
 
 .input-row {
   display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 textarea {
@@ -334,10 +335,34 @@ textarea {
   outline: none;
   padding: 0.5rem;
   font-family: inherit;
-  font-size: 0.95rem;
-  max-height: 120px;
-  /* Reduced max height */
+  font-size: 1rem;
+  max-height: 150px;
   line-height: 1.5;
+}
+
+/* Mobile Adjustments for input */
+@media (max-width: 640px) {
+  .input-container {
+    padding: 0.75rem;
+  }
+
+  .input-box {
+    padding: 0.5rem;
+  }
+
+  .icon-btn {
+    padding: 0.4rem;
+  }
+
+  .icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  textarea {
+    font-size: 0.9rem;
+    padding: 0.4rem;
+  }
 }
 
 .icon-btn {
@@ -474,4 +499,77 @@ textarea {
 
 .icon-btn.listening svg {
   color: #ef4444 !important;
+}
+
+/* Drag and Drop Overlay */
+.drag-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(35, 134, 54, 0.1);
+  backdrop-filter: blur(4px);
+  border: 4px dashed var(--accent-color);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fadeIn 0.2s ease-out;
+  border-radius: 1rem;
+  margin: 1rem;
+}
+
+.drag-overlay-content {
+  background-color: var(--sidebar-bg);
+  padding: 2rem;
+  border-radius: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.drag-overlay-content p {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  margin: 0;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 640px) {
+  .sidebar {
+    top: 10px;
+    height: 60px;
+    width: calc(100% - 20px);
+    padding: 0 0.75rem;
+  }
+
+  .chat-messages {
+    padding-top: 90px;
+  }
+
+  .input-container {
+    padding: 1rem;
+  }
+
+  .message-content {
+    max-width: 90%;
+    padding: 0.75rem 1rem;
+  }
+
+  .avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 1rem;
+  }
+
+  .brand span {
+    display: none;
+  }
 }
