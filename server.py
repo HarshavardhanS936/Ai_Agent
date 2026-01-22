@@ -28,16 +28,15 @@ if not api_key:
 else:
     genai.configure(api_key=api_key)
 
-SYSTEM_PROMPT = """You are a helpful and knowledgeable AI assistant. 
+SYSTEM_PROMPT = """You are Harsha's AI, a helpful and knowledgeable AI assistant. 
 Your goal is to assist users with any questions or tasks they may have, across a wide range of topics.
+You are capable of analyzing images and PDF documents that the user uploads.
 Be polite, concise, and helpful."""
 
 AVAILABLE_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-3-flash',
     'gemini-1.5-flash',
-    'gemini-1.5-pro'
+    'gemini-1.5-pro',
+    'gemini-2.0-flash-exp'
 ]
 
 from flask_cors import CORS
@@ -50,7 +49,8 @@ app = Flask(__name__,
 CORS(app)
 
 DB_NAME = "chat.db"
-UPLOAD_FOLDER = 'uploads'
+# Vercel uses a read-only filesystem, /tmp is the only writable directory
+UPLOAD_FOLDER = '/tmp' if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV') else 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -62,7 +62,9 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    # Note: SQLite on Vercel is temporary and will reset on every deploy/restart
+    db_path = os.path.join(UPLOAD_FOLDER, DB_NAME) if os.environ.get('VERCEL') else DB_NAME
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS messages
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,6 +82,11 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Use the correct DB path everywhere
+def get_db_connection():
+    db_path = os.path.join(UPLOAD_FOLDER, DB_NAME) if os.environ.get('VERCEL') else DB_NAME
+    return sqlite3.connect(db_path)
+
 # Initialize DB on startup
 init_db()
 
@@ -92,40 +99,25 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 def get_chat_history(session_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT role, content, image_path FROM messages WHERE session_id = ? ORDER BY id ASC", (session_id,))
     rows = c.fetchall()
     conn.close()
     
     history = []
-    # Always start with system prompt
-    history.append({"role": "user", "parts": [SYSTEM_PROMPT]})
-    history.append({"role": "model", "parts": ["I understand. I am ready to help you with whatever you need."]})
+    # No need to manually add system prompt to history anymore as we use system_instruction
     
     for role, content, image_path in rows:
-        # Map simple role to Gemini API format
         api_role = "model" if role == "assistant" else "user"
-        
         parts = [content]
-        # We generally don't load the actual image bytes into history for the API to save bandwidth/complexity
-        # unless it's the very latest turn. The API is stateless but we helper lib manages history.
-        # Ideally, we should provide the image if it was part of the conversation.
-        # For this implementation, we will try to rely on the model helper or 
-        # just append the text. Providing previous images in history can be heavy.
-        # A simple strategy: Only the CURRENT request sends the image.
-        # Limitation: The model won't "see" past images in context unless we reload them.
-        # Let's try to reload them if file exists.
         
         if image_path and os.path.exists(image_path) and api_role == 'user':
              try:
-                 # Only open as image if it's actually an image
                  if any(image_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
                      img = PIL.Image.open(image_path)
                      parts.append(img)
                  elif image_path.lower().endswith('.pdf'):
-                     # For now, we don't reload PDFs into history manually to avoid re-uploading
-                     # But we could message the model that a file was here.
                      parts.append(f"[File attached: {os.path.basename(image_path)}]")
              except Exception as e:
                  print(f"Could not load file for history: {e}")
@@ -137,11 +129,11 @@ def get_chat_history(session_id):
 def generate_with_fallback(session_id, user_message, history, file_path=None):
     last_error = None
     
-    # Try each model in sequence
     for model_name in AVAILABLE_MODELS:
         try:
             print(f"Trying model: {model_name}...")
-            model = genai.GenerativeModel(model_name)
+            # Use SYSTEM_PROMPT as a proper system instruction
+            model = genai.GenerativeModel(model_name, system_instruction=SYSTEM_PROMPT)
             
             # Prepare parts
             current_parts = [user_message]
@@ -200,7 +192,7 @@ def chat():
             file.save(file_path)
 
     # Save user message to DB
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("INSERT INTO messages (session_id, role, content, image_path) VALUES (?, ?, ?, ?)", 
               (session_id, "user", user_message, file_path))
@@ -221,7 +213,7 @@ def chat():
         model_used = result['model_used']
         
         # Save bot response to DB
-        conn = sqlite3.connect(DB_NAME)
+        conn = get_db_connection()
         c = conn.cursor()
         c.execute("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
                   (session_id, "assistant", bot_response))
@@ -233,9 +225,9 @@ def chat():
         
         return jsonify({
             'response': bot_response,
-            'html_response': html_response,
+            'html_response': html_content if 'html_content' in locals() else html_response,
             'model_used': model_used,
-            'user_image_url': f"/uploads/{os.path.basename(image_path)}" if image_path else None
+            'user_image_url': f"/uploads/{os.path.basename(file_path)}" if file_path else None
         })
 
     except Exception as e:
@@ -275,7 +267,7 @@ def get_session_history(session_id):
     # But sticking to what the UI expects for now.
     # Actually, the front-end will likely want to render the formatted HTML.
     # Let's return the raw db rows so frontend can render them
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT role, content, image_path FROM messages WHERE session_id = ? ORDER BY id ASC", (session_id,))
@@ -296,7 +288,7 @@ def clear_history():
     data = request.json
     session_id = data.get('sessionId')
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
     if session_id:
         c.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
@@ -310,7 +302,7 @@ def clear_history():
 
 @app.route('/db')
 def view_database():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute("SELECT * FROM messages ORDER BY id DESC")
     rows = c.fetchall()
