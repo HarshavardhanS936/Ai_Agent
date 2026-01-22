@@ -71,10 +71,23 @@ function ChatArea({ currentSessionId }) {
 
     // Stop speech when component unmounts or sessionId changes
     useEffect(() => {
+        // KILL ALL SPEECH on first load
+        window.speechSynthesis.cancel();
+
+        // Kill speech when tab is closed/refreshed
+        const killSpeech = () => window.speechSynthesis.cancel();
+        window.addEventListener('beforeunload', killSpeech);
+
         return () => {
             window.speechSynthesis.cancel();
+            window.removeEventListener('beforeunload', killSpeech);
             if (recognitionRef.current) recognitionRef.current.stop();
         };
+    }, []);
+
+    // Stop speech specifically when session changes
+    useEffect(() => {
+        window.speechSynthesis.cancel();
     }, [currentSessionId]);
 
     // Cleanup speech if disabled manually
