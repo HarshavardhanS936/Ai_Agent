@@ -34,9 +34,8 @@ You are capable of analyzing images and PDF documents that the user uploads.
 Be polite, concise, and helpful."""
 
 AVAILABLE_MODELS = [
-    'gemini-2.0-flash',
     'gemini-1.5-flash',
-    'gemini-flash-latest',
+    'gemini-2.0-flash',
     'gemini-1.5-pro',
     'gemini-2.0-flash-exp'
 ]
