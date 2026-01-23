@@ -235,8 +235,16 @@ function ChatArea({ currentSessionId }) {
             if (speechEnabled) speak(res.data.response);
 
         } catch (err) {
-            const errorMessage = err.response?.data?.error || "Sorry, something went wrong.";
-            setMessages(prev => [...prev, { role: 'model', content: errorMessage, animate: false }]);
+            console.error("Chat error:", err);
+            let errorMessage = "Sorry, something went wrong.";
+
+            if (err.response?.data) {
+                // If it's an object, try to get the message or stringify it
+                const data = err.response.data;
+                errorMessage = data.error || data.message || (typeof data === 'string' ? data : JSON.stringify(data));
+            }
+
+            setMessages(prev => [...prev, { role: 'model', content: String(errorMessage), animate: false }]);
         } finally {
             setLoading(false);
             setTimeout(() => inputRef.current?.focus(), 100);
@@ -291,11 +299,11 @@ function ChatArea({ currentSessionId }) {
 
                             {msg.role === 'model' && msg.animate ? (
                                 <TypewriterMsg
-                                    text={msg.content}
+                                    text={String(msg.content || '')}
                                     onComplete={() => { }}
                                 />
                             ) : (
-                                <div dangerouslySetInnerHTML={{ __html: msg.html_content || marked.parse(msg.content || '') }} />
+                                <div dangerouslySetInnerHTML={{ __html: msg.html_content || marked.parse(String(msg.content || '')) }} />
                             )}
 
                             {msg.role === 'model' && (
