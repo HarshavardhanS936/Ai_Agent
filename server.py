@@ -34,7 +34,9 @@ You are capable of analyzing images and PDF documents that the user uploads.
 Be polite, concise, and helpful."""
 
 AVAILABLE_MODELS = [
+    'gemini-2.0-flash',
     'gemini-1.5-flash',
+    'gemini-flash-latest',
     'gemini-1.5-pro',
     'gemini-2.0-flash-exp'
 ]
@@ -171,7 +173,9 @@ def generate_with_fallback(session_id, user_message, history, file_path=None):
             last_error = e
             continue
 
-    raise last_error or Exception("All models failed")
+    if last_error:
+        raise last_error
+    raise Exception("All models failed")
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -225,12 +229,16 @@ def chat():
         
         return jsonify({
             'response': bot_response,
-            'html_response': html_content if 'html_content' in locals() else html_response,
+            'html_response': html_response,
             'model_used': model_used,
             'user_image_url': f"/uploads/{os.path.basename(file_path)}" if file_path else None
         })
 
+    except exceptions.ResourceExhausted as e:
+        logging.error(f"Quota exceeded: {str(e)}")
+        return jsonify({'error': 'API quota exceeded. Please wait a moment before trying again.'}), 429
     except Exception as e:
+        logging.error(f"Error in chat: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

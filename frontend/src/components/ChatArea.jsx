@@ -235,7 +235,8 @@ function ChatArea({ currentSessionId }) {
             if (speechEnabled) speak(res.data.response);
 
         } catch (err) {
-            setMessages(prev => [...prev, { role: 'model', content: "Sorry, something went wrong.", animate: false }]);
+            const errorMessage = err.response?.data?.error || "Sorry, something went wrong.";
+            setMessages(prev => [...prev, { role: 'model', content: errorMessage, animate: false }]);
         } finally {
             setLoading(false);
             setTimeout(() => inputRef.current?.focus(), 100);

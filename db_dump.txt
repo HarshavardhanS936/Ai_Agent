@@ -1,0 +1,5 @@
+(96, 'user', 'hello')
+(95, 'user', 'hi')
+(94, 'user', 'explain the error in the image')
+(93, 'user', 'explain the error')
+(92, 'assistant', "AI content news is rapidly evolving. Here are a few key recent trends:\n\n*   **Advanced Generative Models:** We're seeing continuous improvements in AI models for generating text, images, video (e.g., OpenAI's Sora), and audio, making outputs more realistic and complex.\n*   **Enterprise Adoption:** Businesses are increasingly integrating AI tools for content creation, marketing copy, customer service responses, and personalized content at scale.\n*   **Copyright and Ethics Debates:** Discussions around intellectual property rights, fair use of training data, and the detection of AI-generated content remain prominent as legal frameworks catch up.\n*   **Multimodal AI:** The capability of AI to understand and generate content across various formats (text, image, audio, video) simultaneously is becoming more sophisticated and widely adopted.")
