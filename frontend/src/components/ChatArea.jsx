@@ -239,9 +239,16 @@ function ChatArea({ currentSessionId }) {
             let errorMessage = "Sorry, something went wrong.";
 
             if (err.response?.data) {
-                // If it's an object, try to get the message or stringify it
                 const data = err.response.data;
-                errorMessage = data.error || data.message || (typeof data === 'string' ? data : JSON.stringify(data));
+                if (typeof data === 'string') {
+                    errorMessage = data;
+                } else if (data.error) {
+                    errorMessage = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : data.error;
+                } else if (data.message) {
+                    errorMessage = data.message;
+                } else {
+                    errorMessage = JSON.stringify(data);
+                }
             }
 
             setMessages(prev => [...prev, { role: 'model', content: String(errorMessage), animate: false }]);

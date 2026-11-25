@@ -34,9 +34,10 @@ You are capable of analyzing images and PDF documents that the user uploads.
 Be polite, concise, and helpful."""
 
 AVAILABLE_MODELS = [
-    'gemini-1.5-flash',
     'gemini-2.0-flash',
-    'gemini-1.5-pro',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-1.5-flash',
     'gemini-2.0-flash-exp'
 ]
 
@@ -230,7 +231,7 @@ def chat():
             'response': bot_response,
             'html_response': html_response,
             'model_used': model_used,
-            'user_image_url': f"/uploads/{os.path.basename(file_path)}" if file_path else None
+            'image_url': f"/uploads/{os.path.basename(file_path)}" if file_path else None
         })
 
     except exceptions.ResourceExhausted as e:
@@ -284,8 +285,9 @@ def get_session_history(session_id):
     messages = []
     for row in rows:
         messages.append({
-            'role': row['role'],
-            'content': markdown.markdown(row['content']), # Send HTML ready content
+            'role': 'model' if row['role'] == 'assistant' else row['role'],
+            'content': row['content'], # Send raw content, frontend will parse markdown
+            'html_content': markdown.markdown(row['content']), # also send HTML
             'image_url': f"/uploads/{os.path.basename(row['image_path'])}" if row['image_path'] else None
         })
     return jsonify(messages)
