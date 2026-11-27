@@ -14,12 +14,19 @@ import PIL.Image
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    filename='application.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configure logging safely (Vercel filesystem is read-only except /tmp)
+log_file = '/tmp/application.log' if (os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV')) else 'application.log'
+try:
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+except Exception:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
 # Configure Gemini
 api_key = os.getenv("GEMINI_API_KEY")
