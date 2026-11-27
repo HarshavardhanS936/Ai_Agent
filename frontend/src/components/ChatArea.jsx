@@ -39,7 +39,9 @@ function ChatArea({ currentSessionId }) {
     const recognitionRef = useRef(null);
 
     useEffect(() => {
-        loadHistory();
+        if (currentSessionId && currentSessionId !== 'null') {
+            loadHistory();
+        }
     }, [currentSessionId]);
 
     useEffect(() => {
